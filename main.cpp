@@ -1,22 +1,16 @@
 #include <iostream>
 #include <random>
-#include <thread>
+#include <pthread.h>
+#include <vector>
+#include <cassert>
+
 
 struct p_t {
     double x, y;
 };
 
-p_t center = {1, 1};
-static double radius = 1;
-
-struct calc_args {
-    size_t tests;
-    size_t seed;
-};
-
-struct calc_result {
-    size_t tests;
-};
+constexpr p_t center = {1, 1};
+constexpr double radius = 1;
 
 
 bool isInside(p_t point, p_t center, double r) {
@@ -42,13 +36,17 @@ size_t calc(size_t tests, size_t seed) {
     return total;
 }
 
-void *calc_wrappper(void *data) {
-    calc_args *args = static_cast<calc_args *>(data);
-    calc_result *result = new calc_result{calc(args->tests, args->seed)};
-    return result;
-}
 
 struct CalcWrapper {
+    struct calc_args {
+        size_t tests;
+        size_t seed;
+    };
+
+    struct calc_result {
+        size_t tests;
+    };
+
     calc_args *args;
     calc_result *result;
     pthread_t th;
@@ -58,10 +56,19 @@ struct CalcWrapper {
     }
 
     calc_result get() {
+        assert(th != 0 && "please don't double-run get()");
+
         void *outputPtr;
         int err = pthread_join(th, &outputPtr);
         result = static_cast<calc_result *>(outputPtr);
+        th = 0;
         return *result;
+    }
+
+    static void *calc_wrappper(void *data) {
+        calc_args *args = static_cast<calc_args *>(data);
+        calc_result *result = new calc_result{calc(args->tests, args->seed)};
+        return result;
     }
 
     ~CalcWrapper() {
@@ -86,6 +93,7 @@ double area(size_t threads, size_t tests) {
     size_t perThread = tests / threads;
 
     std::vector<CalcWrapper> threadsVec;
+    threadsVec.reserve(threads);
     size_t hit = 0;
 
     for (size_t i = 0; i < threads; i++) {
