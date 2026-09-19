@@ -2,7 +2,6 @@
 #include <iostream>
 #include <random>
 #include <thread>
-// входит ли точка в круг в координатах (1,1)
 
 struct p_t {
     double x, y;
@@ -46,36 +45,55 @@ size_t calc(size_t tests, size_t seed) {
 
 void *calc_wrappper(void *data) {
     calc_args *args = static_cast<calc_args *>(data);
-    calc_result* result = new calc_result{calc(args->tests, args->seed)};
+    calc_result *result = new calc_result{calc(args->tests, args->seed)};
     return result;
 }
 
+struct CalcWrapper {
+    calc_args *args;
+    calc_result *result;
+    pthread_t th;
+
+    CalcWrapper(size_t tests, size_t seed) : args(new calc_args{tests, seed}), result(nullptr), th(0) {
+        int err = pthread_create(&th, nullptr, calc_wrappper, args);
+    }
+
+    calc_result get() {
+        void *outputPtr;
+        int err = pthread_join(th, &outputPtr);
+        result = static_cast<calc_result *>(outputPtr);
+        return *result;
+    }
+
+    ~CalcWrapper() {
+        delete args;
+        delete result;
+    }
+
+    CalcWrapper(CalcWrapper &) = delete;
+
+    CalcWrapper(CalcWrapper &&other) noexcept : args(other.args), result(other.result), th(other.th) {
+        other.args = nullptr;
+        other.result = nullptr;
+        other.th = 0;
+    };
+
+    CalcWrapper &operator=(CalcWrapper &) = delete;
+
+    CalcWrapper &operator=(CalcWrapper &&) = delete;
+};
 
 double area(size_t threads, size_t tests) {
     size_t perThread = tests / threads;
 
-    std::vector<pthread_t> threadsVec;
-    std::vector<calc_args*> threadArguments;
-    threadsVec.reserve(threads);
-    threadArguments.reserve(threads);
+    std::vector<CalcWrapper> threadsVec;
     size_t hit = 0;
 
     for (size_t i = 0; i < threads; i++) {
-        pthread_t th;
-        auto * args = new calc_args{perThread, i};
-        int err = pthread_create(&th, nullptr, calc_wrappper, args);
-        threadsVec.push_back(th);
-        threadArguments.push_back(args);
+        threadsVec.emplace_back(perThread, i);
     }
     for (size_t i = 0; i < threads; i++) {
-        pthread_t th =  threadsVec[i];
-        void* result;
-        int err =pthread_join(th, &result);
-        auto * res = static_cast<calc_result*>(result);
-        hit += res->tests;
-
-        delete res;
-        delete threadArguments[i];
+        hit += threadsVec[i].get().tests;
     }
     return static_cast<double>(hit) / static_cast<double>(tests) * 4.0;
 }
