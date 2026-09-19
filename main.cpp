@@ -1,4 +1,3 @@
-#include <future>
 #include <iostream>
 #include <random>
 #include <thread>
@@ -100,5 +99,5 @@ double area(size_t threads, size_t tests) {
 
 
 int main() {
-    std::cout << area(4, 200) << std::endl;
+    std::cout << area(8, 20000) << std::endl;
 }
